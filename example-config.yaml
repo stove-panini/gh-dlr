@@ -1,0 +1,25 @@
+---
+# Create something like this in ~/.config/gh-dlr/config.yaml
+defaults:
+  tag: latest
+  draft: False
+  prerelease: False
+  dest: ~/.local/bin
+  after_script: chmod +x "@d/@f"
+
+releases:
+  - name: gh-dlr
+    repo: stove-panini/gh-dlr
+    file: gh-dlr
+
+  - name: iosevka-term
+    repo: be5invis/iosevka
+    tag: v27.3.0
+    file: super-ttc-sgr-iosevka-term-@v.zip
+    dest: ~/.local/share/fonts
+    after_script: unzip -o "@d/@f" -d "@d"; rm -f "@d/@f"
+    creates: "@d/sgr-iosevka-term.ttc"
+
+  - name: yt-dlp
+    repo: yt-dlp/yt-dlp
+    file: yt-dlp

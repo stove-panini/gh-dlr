@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+#
+# gh-dlr - A GitHub release downloader
+# © 2023 Stephen Panicho - stephen@trashnet.xyz
+#
+
+import argparse
+import json
+import os
+import shutil
+import sys
+import subprocess
+from urllib.request import urlopen
+import yaml
+
+
+def validate_cfg(cfg: dict) -> bool:
+    required_str_keys = ["name", "repo", "tag", "file", "dest"]
+    required_bool_keys = ["prerelease", "draft"]
+    optional_str_keys = ["before_script", "after_script", "creates"]
+
+    for i in required_str_keys:
+        assert i in cfg, f"Error: {i} key missing from config"
+        assert isinstance(cfg[i], str), f"Error: {i} is not a string"
+
+    for i in required_bool_keys:
+        assert i in cfg, f"Error: {i} key missing from config"
+        assert isinstance(cfg[i], bool), f"Error: {i} is not a boolean"
+
+    for i in optional_str_keys:
+        if i in cfg:
+            assert isinstance(cfg[i], str), f"Error: {i} is not a string"
+
+    return True
+
+
+def validate_release(release: dict, cfg: dict) -> bool:
+    assert "assets" in release, "Error: No assets found in JSON response"
+
+    if not cfg["draft"]:
+        assert not release["draft"], "Skipping: This is a draft"
+
+    if not cfg["prerelease"]:
+        assert not release["prerelease"], "Skipping: This is a prerelease"
+
+    file_exists = False
+    for asset in release["assets"]:
+        if cfg["file"] == asset["name"]:
+            file_exists = True
+
+    assert file_exists, "Error: Filename not found in any available asset"
+
+    return True
+
+
+def is_version(tag: str) -> bool:
+    if tag[0] == "v":
+        tag = tag[1:]
+
+    if not tag[0].isdigit():
+        return False
+
+    for char in tag:
+        if not char.isdigit() and char != ".":
+            return False
+
+    return True
+
+
+def is_installed(cfg: dict) -> bool:
+    if "creates" in cfg:
+        filepath = cfg["creates"]
+    else:
+        filepath = f"{cfg['dest']}/{cfg['file']}"
+
+    return os.path.isfile(filepath)
+
+
+def add_cfg_defaults(cfg: dict, defaults: dict) -> dict:
+    for k, v in defaults.items():
+        if k not in cfg:
+            cfg[k] = v
+
+    return cfg
+
+
+def sub_cfg_values(cfg: dict, release: dict) -> dict:
+    tag_name = release["tag_name"]
+    if is_version(tag_name) and tag_name[0] == "v":
+        version = tag_name[1:]
+    elif is_version(tag_name) and tag_name[0] != "v":
+        version = tag_name
+    else:
+        version = ""
+
+    subs = {
+        "@d": cfg["dest"],
+        "@f": cfg["file"],
+        "@n": release["name"],
+        "@t": tag_name,
+        "@v": version,
+    }
+
+    for k in cfg:
+        if not isinstance(cfg[k], str):
+            continue
+
+        # Replace substitute tokens
+        for sk, sv in subs.items():
+            while sk in cfg[k]:
+                cfg[k] = cfg[k].replace(sk, sv)
+
+        # Expand ~ in the keys where it may be found
+        expand_keys = ["dest", "creates", "before_script", "after_script"]
+        if k in expand_keys and "~" in cfg[k]:
+            cfg[k] = cfg[k].replace("~", os.path.expanduser("~"))
+
+    return cfg
+
+
+def get_release(repo: str, tag: str) -> dict:
+    if tag == "latest":
+        release = tag
+    else:
+        release = f"tags/{tag}"
+
+    url = f"https://api.github.com/repos/{repo}/releases/{release}"
+
+    response = urlopen(url)
+    return json.loads(response.read())
+
+
+def get_asset(release: dict, cfg: dict) -> dict:
+    for asset in release["assets"]:
+        if cfg["file"] == asset["name"]:
+            return asset
+
+
+cfg_dir = "~/.config/gh-dlr"
+state_dir = os.path.expanduser("~/.local/state/gh-dlr")
+os.makedirs(state_dir, exist_ok=True)
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-c",
+    metavar="CONFIG_FILE",
+    default=f"{os.path.expanduser(cfg_dir)}/config.yaml",
+    help=f"Path to config file. Default: {cfg_dir}/config.yaml",
+)
+args = parser.parse_args()
+
+cfg_file = args.c
+
+with open(cfg_file, "r") as f:
+    cfg_data = yaml.safe_load(f)
+
+for raw_cfg in cfg_data["releases"]:
+    full_cfg = add_cfg_defaults(raw_cfg, cfg_data["defaults"])
+
+    # Ensure required keys are present and that value types are correct
+    try:
+        validate_cfg(full_cfg)
+    except AssertionError as e:
+        print(e, file=sys.stderr)
+        continue
+
+    print(f"\n## {full_cfg['name']}")
+    print(f"## https://github.com/{full_cfg['repo']}")
+
+    # Get release JSON data from GitHub API and substitute values in config
+    print("Downloading release data")
+    release = get_release(full_cfg["repo"], full_cfg["tag"])
+    cfg = sub_cfg_values(full_cfg, release)
+    asset = get_asset(release, cfg)
+
+    state_file = f"{state_dir}/{cfg['name']}"
+
+    # Move on if the remote asset id matches what's in the state file
+    print("Checking installed version")
+    with open(state_file, "a+") as f:
+        # Opening with a+ creates the file if it doesn't exist, but points to
+        # the end for appending. We get back to the beginning with seek(0).
+        f.seek(0)
+        installed_id = f.readline()
+        print(f"Installed ID: {installed_id}")
+        print(f"Remote ID: {asset['id']}")
+
+        if installed_id == str(asset["id"]) and is_installed(cfg):
+            continue
+        else:
+            print("File is NOT installed")
+
+    # Ensure cfg options match release data (file, draft, prerelease...)
+    try:
+        validate_release(release, cfg)
+    except AssertionError as e:
+        print(e, file=sys.stderr)
+        continue
+
+    # Run before_script
+    if "before_script" in cfg:
+        print("Running before_script:")
+        print(cfg["before_script"])
+        try:
+            subprocess.run(
+                cfg["before_script"], shell=True, capture_output=True, check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(e, file=sys.stderr)
+            continue
+
+    # Download the file
+    print(f"Downloading {cfg['file']}...")
+    os.makedirs(cfg["dest"], exist_ok=True)
+
+    with urlopen(asset["browser_download_url"]) as response:
+        with open(f"{cfg['dest']}/{asset['name']}", "wb") as file:
+            # Write the stream with a buffer size of 1 MiB
+            shutil.copyfileobj(response, file, 1024 * 1024)
+
+    # Run after_script
+    if "after_script" in cfg:
+        print("Running after_script:")
+        print(cfg["after_script"])
+        try:
+            subprocess.run(
+                cfg["after_script"], shell=True, capture_output=True, check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(e, file=sys.stderr)
+            continue
+
+    # Write to the state file
+    print("Recording installed version")
+    with open(state_file, "w") as f:
+        f.write(str(asset["id"]))
