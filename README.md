@@ -10,6 +10,13 @@ options:
   -h, --help      show this help message and exit
   -c CONFIG_FILE  Path to config file. Default: ~/.config/gh-dlr/config.yaml
 ```
+Requirements
+------------
+* Some reasonably recent version of Python 3.
+* [PyYAML](https://pyyaml.org), for reading the config file.
+
+Your distro most likely has PyYAML packaged as `python3-yaml` or `python3-pyyaml`.
+
 Config file
 -----------
 There are two main sections in the config file: the map of **defaults** and the list of **releases**. The settings below could go in either section, but some make more sense as defaults than others. See [example-config.yaml](example-config.yaml) for further detail.

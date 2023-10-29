@@ -13,6 +13,8 @@ import subprocess
 from urllib.request import urlopen
 import yaml
 
+VERSION = "v1.0.1"
+
 
 def validate_cfg(cfg: dict) -> bool:
     required_str_keys = ["name", "repo", "tag", "file", "dest"]
@@ -136,10 +138,12 @@ def get_asset(release: dict, cfg: dict) -> dict:
             return asset
 
 
+# Ensure we have our config and state directories
 cfg_dir = "~/.config/gh-dlr"
 state_dir = os.path.expanduser("~/.local/state/gh-dlr")
 os.makedirs(state_dir, exist_ok=True)
 
+# Parse script args
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-c",
@@ -147,13 +151,18 @@ parser.add_argument(
     default=f"{os.path.expanduser(cfg_dir)}/config.yaml",
     help=f"Path to config file. Default: {cfg_dir}/config.yaml",
 )
+parser.add_argument("-v", "--version", action="version", version=VERSION)
 args = parser.parse_args()
 
-cfg_file = args.c
+# Load the config file and ensure it has releases defined
+try:
+    with open(args.c, "r") as f:
+        cfg_data = yaml.safe_load(f)
+    assert "releases" in cfg_data, "No releases found in config"
+except Exception as e:
+    sys.exit(e)
 
-with open(cfg_file, "r") as f:
-    cfg_data = yaml.safe_load(f)
-
+# Loop through each release
 for raw_cfg in cfg_data["releases"]:
     full_cfg = add_cfg_defaults(raw_cfg, cfg_data["defaults"])
 
@@ -172,23 +181,23 @@ for raw_cfg in cfg_data["releases"]:
     release = get_release(full_cfg["repo"], full_cfg["tag"])
     cfg = sub_cfg_values(full_cfg, release)
     asset = get_asset(release, cfg)
-
     state_file = f"{state_dir}/{cfg['name']}"
 
-    # Move on if the remote asset id matches what's in the state file
+    # Read the state file (or create it if it doesn't exist) and check if the
+    # file from the release is actually installed
     print("Checking installed version")
-    with open(state_file, "a+") as f:
-        # Opening with a+ creates the file if it doesn't exist, but points to
-        # the end for appending. We get back to the beginning with seek(0).
-        f.seek(0)
-        installed_id = f.readline()
-        print(f"Installed ID: {installed_id}")
-        print(f"Remote ID: {asset['id']}")
-
-        if installed_id == str(asset["id"]) and is_installed(cfg):
-            continue
+    with open(state_file, "r+") as f:
+        if is_installed(cfg):
+            installed_id = f.readline()
         else:
-            print("File is NOT installed")
+            installed_id = "Not installed"
+
+    print(f"Installed ID: {installed_id}")
+    print(f"Remote ID: {asset['id']}")
+
+    # Move on if the file is already installed
+    if installed_id == str(asset["id"]):
+        continue
 
     # Ensure cfg options match release data (file, draft, prerelease...)
     try:
