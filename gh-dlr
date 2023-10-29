@@ -179,8 +179,11 @@ for raw_cfg in cfg_data["releases"]:
     # Get release JSON data from GitHub API and substitute values in config
     print("Downloading release data")
     release = get_release(full_cfg["repo"], full_cfg["tag"])
+
+    # Substitute vars in cfg and set some handy variables
     cfg = sub_cfg_values(full_cfg, release)
     asset = get_asset(release, cfg)
+    tag_name = release["tag_name"]
     state_file = f"{state_dir}/{cfg['name']}"
 
     # Read the state file (or create it if it doesn't exist) and check if the
@@ -188,15 +191,15 @@ for raw_cfg in cfg_data["releases"]:
     print("Checking installed version")
     with open(state_file, "r+") as f:
         if is_installed(cfg):
-            installed_id = f.readline()
+            state = f.readline()
         else:
-            installed_id = "Not installed"
+            state = "Not installed"
 
-    print(f"Installed ID: {installed_id}")
-    print(f"Remote ID: {asset['id']}")
+    print(f"Installed: {state}")
+    print(f"Available: {tag_name}")
 
     # Move on if the file is already installed
-    if installed_id == str(asset["id"]):
+    if state == tag_name:
         continue
 
     # Ensure cfg options match release data (file, draft, prerelease...)
@@ -242,4 +245,4 @@ for raw_cfg in cfg_data["releases"]:
     # Write to the state file
     print("Recording installed version")
     with open(state_file, "w") as f:
-        f.write(str(asset["id"]))
+        f.write(tag_name)
