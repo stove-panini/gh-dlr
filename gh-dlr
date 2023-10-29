@@ -13,7 +13,7 @@ import subprocess
 from urllib.request import urlopen
 import yaml
 
-VERSION = "v1.0.1"
+VERSION = "v1.1.0"
 
 
 def validate_cfg(cfg: dict) -> bool:
