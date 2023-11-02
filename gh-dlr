@@ -189,7 +189,8 @@ for raw_cfg in cfg_data["releases"]:
     # Read the state file (or create it if it doesn't exist) and check if the
     # file from the release is actually installed
     print("Checking installed version")
-    with open(state_file, "r+") as f:
+    with open(state_file, "a+") as f:
+        f.seek(0)
         if is_installed(cfg):
             state = f.readline()
         else:
