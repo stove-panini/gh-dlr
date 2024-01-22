@@ -1,5 +1,4 @@
 ---
-# Create something like this in ~/.config/gh-dlr/config.yaml
 defaults:
   tag: latest
   draft: False
@@ -14,12 +13,27 @@ releases:
 
   - name: iosevka-term
     repo: be5invis/iosevka
-    tag: v27.3.0
-    file: super-ttc-sgr-iosevka-term-@v.zip
+    file: SuperTTC-SGr-IosevkaTerm-@v.zip
     dest: ~/.local/share/fonts
     after_script: unzip -o "@d/@f" -d "@d"; rm -f "@d/@f"
-    creates: "@d/sgr-iosevka-term.ttc"
+    creates: "@d/SGr-IosevkaTerm.ttc"
 
-  - name: yt-dlp
-    repo: yt-dlp/yt-dlp
-    file: yt-dlp
+  - name: JetBrainsMono
+    repo: JetBrains/JetBrainsMono
+    file: JetBrainsMono-@v.zip
+    dest: ~/.local/share/fonts
+    before_script: mkdir "@d/JetBrainsMono"
+    after_script: unzip -o "@d/@f" -d "@d/JetBrainsMono"; rm -f "@d/@f"
+    creates: "@d/JetBrainsMono/fonts/ttf/JetBrainsMono-Regular.ttf"
+
+  - name: k9s
+    repo: derailed/k9s
+    file: k9s_Linux_amd64.tar.gz
+    after_script: tar -C "@d" -xf "@d/@f" k9s; rm -f "@d/@f"
+    creates: "@d/k9s"
+
+  - name: restic
+    repo: restic/restic
+    file: restic_@v_linux_amd64.bz2
+    after_script: bunzip2 "@d/@f"; mv "@d/restic_@v_linux_amd64" "@d/restic"; chmod 755 "@d/restic"
+    creates: "@d/restic"
