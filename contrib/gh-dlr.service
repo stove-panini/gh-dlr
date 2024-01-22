@@ -3,6 +3,7 @@ Description=GitHub project release downloader
 ConditionFileNotEmpty=/%E/gh-dlr/config.yaml
 Wants=network-online.target
 After=network-online.target
+After=NetworkManager-wait-online.service
 
 [Service]
 Type=exec
