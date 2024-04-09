@@ -10,6 +10,8 @@ import os
 import shutil
 import sys
 import subprocess
+from time import sleep
+import urllib.error
 from urllib.request import urlopen
 import yaml
 
@@ -120,6 +122,23 @@ def sub_cfg_values(cfg: dict, release: dict) -> dict:
     return cfg
 
 
+def test_network(timeout: int) -> bool:
+    attempts = 1
+
+    while attempts < timeout:
+        try:
+            urlopen("https://api.github.com")
+        except urllib.error.URLError as e:
+            print(f"Network unreachable. Retrying ({attempts}/{timeout})")
+            sleep(1)
+            attempts += 1
+            error = e
+
+    if attempts == timeout:
+        print("Unable to connect to network.")
+        raise urllib.error.URLError(error)
+
+
 def get_release(repo: str, tag: str) -> dict:
     if tag == "latest":
         release = tag
@@ -159,6 +178,12 @@ try:
     with open(args.c, "r") as f:
         cfg_data = yaml.safe_load(f)
     assert "releases" in cfg_data, "No releases found in config"
+except Exception as e:
+    sys.exit(e)
+
+# Ensure network is up
+try:
+    test_network(30)
 except Exception as e:
     sys.exit(e)
 
