@@ -10,7 +10,6 @@ import os
 import shutil
 import sys
 import subprocess
-from time import sleep
 import urllib.error
 from urllib.request import urlopen
 import yaml
@@ -122,21 +121,19 @@ def sub_cfg_values(cfg: dict, release: dict) -> dict:
     return cfg
 
 
-def test_network(timeout: int) -> bool:
+def is_network_up(timeout: int) -> bool:
     attempts = 1
 
-    while attempts < timeout:
+    while attempts <= timeout:
         try:
-            urlopen("https://api.github.com")
+            urlopen("https://api.github.com", timeout=2)
+            return True
         except urllib.error.URLError as e:
-            print(f"Network unreachable. Retrying ({attempts}/{timeout})")
-            sleep(1)
+            print(f"{e}. Retrying ({attempts}/{timeout})")
             attempts += 1
-            error = e
 
-    if attempts == timeout:
-        print("Unable to connect to network.")
-        raise urllib.error.URLError(error)
+    if attempts > timeout:
+        return False
 
 
 def get_release(repo: str, tag: str) -> dict:
@@ -182,10 +179,8 @@ except Exception as e:
     sys.exit(e)
 
 # Ensure network is up
-try:
-    test_network(30)
-except Exception as e:
-    sys.exit(e)
+if not is_network_up(10):
+    sys.exit(1)
 
 # Loop through each release
 for raw_cfg in cfg_data["releases"]:
